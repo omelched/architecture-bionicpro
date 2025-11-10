@@ -1,6 +1,21 @@
-version: '3.8'
+version: "3.8"
 
 services:
+  openldap:
+    image: osixia/openldap:1.5.0
+    command: --copy-service
+    volumes:
+      - ./ldap/ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom:ro
+    environment:
+      - LDAP_ORGANISATION=bionicpro
+      - LDAP_DOMAIN=bionicpro.com
+      - LDAP_ADMIN_PASSWORD=admin
+    ports:
+      - "389:389"
+      - "636:636"
+    networks:
+      - airflow
+
   keycloak_db:
     image: postgres:14
     environment:
@@ -11,6 +26,9 @@ services:
       - ./postgres-keycloak-data:/var/lib/postgresql/data
     ports:
       - "5433:5432"
+    networks:
+      - airflow
+
   keycloak:
     image: quay.io/keycloak/keycloak:21.1
     environment:
@@ -20,7 +38,7 @@ services:
       KC_DB_URL: jdbc:postgresql://keycloak_db:5432/keycloak_db
       KC_DB_USERNAME: keycloak_user
       KC_DB_PASSWORD: keycloak_password
-    command: 
+    command:
       - start-dev
       - --import-realm
     volumes:
@@ -29,6 +47,10 @@ services:
       - "8080:8080"
     depends_on:
       - keycloak_db
+      - openldap
+    networks:
+      - airflow
+
   frontend:
     build:
       context: ./frontend
@@ -40,3 +62,26 @@ services:
       REACT_APP_KEYCLOAK_URL: http://localhost:8080
       REACT_APP_KEYCLOAK_REALM: reports-realm
       REACT_APP_KEYCLOAK_CLIENT_ID: reports-frontend
+    networks:
+      - airflow
+
+  bionicpro-auth:
+    build:
+      context: ./bionicpro-auth
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    networks:
+      - airflow
+      - s3-public
+
+  redis:
+    image: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - airflow
+
+include:
+  - ./docker-compose.airflow.yaml
+  - ./docker-compose.s3.yaml
